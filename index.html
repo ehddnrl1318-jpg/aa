@@ -979,12 +979,8 @@
         }
 
         function calculateGroupId(r, c, cols, groupSize) {
-            const blockCols = 2; // 보통 모둠은 2열(가로 2명)로 묶음
-            const blockRows = Math.max(1, Math.ceil(groupSize / blockCols));
-            const groupR = Math.floor(r / blockRows);
-            const groupC = Math.floor(c / blockCols);
-            const blocksPerRow = Math.ceil(cols / blockCols);
-            return groupR * blocksPerRow + groupC + 1;
+            const index = r * cols + c;
+            return Math.floor(index / groupSize) + 1;
         }
 
         // Shuffle array
