@@ -1,0 +1,1297 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>교실 모둠배정 도우미</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Pretendard -->
+    <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.8/dist/web/static/pretendard.css" />
+    <style>
+        body { font-family: 'Pretendard', sans-serif; }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        /* Animations */
+        .fade-in { animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        
+        .scale-in { animation: scaleIn 0.3s ease-out forwards; }
+        @keyframes scaleIn { 
+            0% { transform: scale(0.9); opacity: 0; } 
+            100% { transform: scale(1); opacity: 1; } 
+        }
+
+        .countdown-anim { animation: pingPong 1s ease-in-out forwards; }
+        @keyframes pingPong {
+            0% { transform: scale(0.5); opacity: 0; }
+            50% { transform: scale(1.5); opacity: 1; }
+            100% { transform: scale(2); opacity: 0; }
+        }
+
+        /* 3D Flip effect for Mask Mode */
+        .seat-card {
+            perspective: 1000px;
+            transition: transform 0.3s;
+        }
+        .seat-card-inner {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            transition: transform 0.6s cubic-bezier(0.4, 0.2, 0.2, 1);
+            transform-style: preserve-3d;
+        }
+        .seat-card.masked .seat-card-inner {
+            transform: rotateY(180deg);
+        }
+        .seat-front, .seat-back {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            backface-visibility: hidden;
+            border-radius: 0.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            cursor: pointer;
+            user-select: none;
+        }
+        .seat-front {
+            background-color: white;
+            border: 2px solid #e2e8f0;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .seat-back {
+            background: linear-gradient(135deg, #10b981 0%, #047857 100%);
+            color: white;
+            transform: rotateY(180deg);
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+        
+        .zone-front { background-color: #ffedd5; border-color: #fdba74; }
+        .zone-back { background-color: #e0f2fe; border-color: #7dd3fc; }
+        .zone-fixed { background-color: #fce7f3; border-color: #f472b6; }
+        .zone-normal { background-color: #f1f5f9; border-color: #cbd5e1; }
+        .zone-empty { background-color: #f8fafc; border-color: #e2e8f0; border-style: dashed; }
+
+        /* Rotated board */
+        .rotated-180 { transform: rotate(180deg); }
+        .rotated-180 .seat-content { transform: rotate(-180deg); }
+
+        .selected-seat { outline: 3px solid #10b981; outline-offset: 2px; }
+        
+        .cell-interactive { cursor: pointer; transition: all 0.2s; }
+        .cell-interactive:hover { opacity: 0.8; transform: scale(1.05); }
+
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 h-screen flex flex-col overflow-hidden">
+
+    <!-- Header & Tabs -->
+    <header class="bg-white shadow-sm z-10 shrink-0">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <div class="flex items-center">
+                    <svg class="h-8 w-8 text-emerald-600 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+                    </svg>
+                    <h1 class="text-xl font-bold text-slate-900">교실 모둠배정 도우미</h1>
+                </div>
+                <div class="flex space-x-1">
+                    <button id="tab-basic" class="px-4 py-2 rounded-md font-medium text-emerald-700 bg-emerald-50 transition-colors">기본 설정</button>
+                    <button id="tab-adv" class="px-4 py-2 rounded-md font-medium text-slate-500 hover:text-slate-700 hover:bg-slate-100 hidden transition-colors" title="Ctrl+F8로 숨기기/보이기">고급 설정</button>
+                    <button id="tab-result" class="px-4 py-2 rounded-md font-medium text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors disabled:opacity-50">배치 결과</button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
+        <div class="max-w-7xl mx-auto h-full relative">
+
+            <!-- Basic Tab -->
+            <div id="view-basic" class="view-panel h-full flex flex-col md:flex-row gap-6 scale-in">
+                <!-- Left: Settings -->
+                <div class="w-full md:w-1/3 flex flex-col gap-4">
+                    <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+                        <h2 class="text-lg font-semibold mb-4 flex items-center">
+                            <span class="bg-emerald-100 text-emerald-600 w-6 h-6 rounded-full inline-flex items-center justify-center text-sm mr-2">1</span> 교실 크기 & 모둠 설정
+                        </h2>
+                        <div class="flex items-center gap-4 mb-4">
+                            <div>
+                                <label class="block text-sm font-medium text-slate-600 mb-1">행 (세로 줄)</label>
+                                <input type="number" id="input-rows" min="1" max="20" value="5" class="w-20 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition">
+                            </div>
+                            <div class="text-slate-400 font-bold text-xl mt-5">×</div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-600 mb-1">열 (가로 줄)</label>
+                                <input type="number" id="input-cols" min="1" max="20" value="5" class="w-20 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition">
+                            </div>
+                            <div class="mt-5 ml-auto text-sm text-slate-500">
+                                총 <span id="total-seats-display" class="font-bold text-emerald-600">25</span>자리
+                            </div>
+                        </div>
+                        <div class="pt-4 border-t border-slate-100 flex items-center justify-between">
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700">1모둠당 인원수</label>
+                                <p class="text-xs text-slate-400">앞에서부터 지정된 인원수만큼 한 조로 묶입니다.</p>
+                            </div>
+                            <input type="number" id="input-group-size" min="1" max="10" value="4" class="w-20 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition">
+                        </div>
+                    </div>
+
+                    <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 flex-1 flex flex-col min-h-0">
+                        <h2 class="text-lg font-semibold mb-2 flex items-center">
+                            <span class="bg-emerald-100 text-emerald-600 w-6 h-6 rounded-full inline-flex items-center justify-center text-sm mr-2">2</span> 학생 명단
+                        </h2>
+                        <p class="text-xs text-slate-500 mb-3">쉼표나 줄바꿈, 띄어쓰기로 구분하여 여러 명을 복사/붙여넣기 할 수 있습니다.</p>
+                        <div class="flex gap-2 mb-3">
+                            <input type="text" id="input-student-name" placeholder="이름 입력" class="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition" autocomplete="off">
+                            <button id="btn-add-student" class="bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 transition shadow-sm font-medium">추가</button>
+                        </div>
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-sm font-medium text-slate-600">총 인원: <span id="student-count" class="text-emerald-600 font-bold">0</span>명</span>
+                            <button id="btn-clear-students" class="text-xs text-red-500 hover:text-red-700 hover:underline">모두 삭제</button>
+                        </div>
+                        <div class="overflow-y-auto flex-1 bg-slate-50 rounded-lg border border-slate-200 p-2" id="student-list">
+                            <!-- Student items will be inserted here -->
+                            <div class="text-center text-slate-400 text-sm py-8" id="empty-student-msg">학생을 추가해주세요.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: Preferences & Actions -->
+                <div class="w-full md:w-2/3 flex flex-col gap-4">
+                    <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 flex-1 flex flex-col min-h-0">
+                        <h2 class="text-lg font-semibold mb-2 flex items-center">
+                            <span class="bg-emerald-100 text-emerald-600 w-6 h-6 rounded-full inline-flex items-center justify-center text-sm mr-2">3</span> 자리 선호도 설정
+                        </h2>
+                        <p class="text-xs text-slate-500 mb-4">각 학생별로 선호하는 자리 위치를 설정할 수 있습니다. (고급설정의 구역과 연동)</p>
+                        
+                        <div class="overflow-y-auto flex-1 mb-4 border border-slate-200 rounded-lg" id="preference-list">
+                            <table class="w-full text-sm text-left">
+                                <thead class="text-xs text-slate-700 uppercase bg-slate-100 sticky top-0 z-10">
+                                    <tr>
+                                        <th scope="col" class="px-4 py-3">이름</th>
+                                        <th scope="col" class="px-4 py-3">선호도</th>
+                                        <th scope="col" class="px-4 py-3 w-16 text-center">삭제</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="preference-table-body" class="divide-y divide-slate-100">
+                                    <!-- Preference rows -->
+                                </tbody>
+                            </table>
+                        </div>
+                        
+                        <div class="flex flex-wrap gap-3 pt-4 border-t border-slate-100 mt-auto items-center">
+                            <button id="btn-save-json" class="flex items-center px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition shadow-sm font-medium text-sm">
+                                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path></svg>
+                                설정 저장
+                            </button>
+                            <label class="flex items-center px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition shadow-sm font-medium text-sm cursor-pointer mb-0">
+                                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                                설정 불러오기
+                                <input type="file" id="input-load-json" class="hidden" accept=".json">
+                            </label>
+                            
+                            <button id="btn-run-allocation" class="ml-auto flex items-center px-8 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl hover:from-emerald-700 hover:to-teal-700 transition shadow-md font-bold text-lg transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed">
+                                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                모둠 배치 실행
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Advanced Tab (Hidden by default) -->
+            <div id="view-adv" class="view-panel h-full flex flex-col hidden scale-in">
+                <div class="bg-amber-50 border-l-4 border-amber-400 p-4 mb-4 rounded-r-lg flex justify-between items-start shrink-0">
+                    <div>
+                        <h3 class="text-amber-800 font-bold">고급 설정</h3>
+                        <p class="text-amber-700 text-sm mt-1">Ctrl + F8 단축키로 이 탭을 숨기거나 표시할 수 있습니다. 배치 제약 조건을 세밀하게 설정합니다.</p>
+                    </div>
+                </div>
+                
+                <div class="flex flex-col lg:flex-row gap-6 flex-1 min-h-0">
+                    <!-- Left: Constraints Lists -->
+                    <div class="w-full lg:w-1/3 flex flex-col gap-4 overflow-y-auto pr-2">
+                        <!-- Fixed Seats -->
+                        <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+                            <h2 class="text-md font-semibold mb-3">고정석 지정</h2>
+                            <div class="flex gap-2 mb-3">
+                                <select id="sel-fixed-student" class="flex-1 px-2 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none">
+                                    <option value="">학생 선택</option>
+                                </select>
+                                <input type="number" id="input-fixed-row" placeholder="행(1~)" class="w-16 px-2 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none" min="1">
+                                <input type="number" id="input-fixed-col" placeholder="열(1~)" class="w-16 px-2 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none" min="1">
+                                <button id="btn-add-fixed" class="bg-slate-800 text-white px-3 py-2 rounded-lg text-sm hover:bg-slate-700 transition shrink-0">추가</button>
+                            </div>
+                            <ul id="fixed-list" class="space-y-2 text-sm max-h-40 overflow-y-auto pr-1"></ul>
+                        </div>
+                        
+                        <!-- Avoid Pairs -->
+                        <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 flex-1 flex flex-col min-h-0">
+                            <h2 class="text-md font-semibold mb-3">피해야 할 짝</h2>
+                            <p class="text-xs text-slate-500 mb-2">선택한 두 학생은 <strong class="text-red-500">같은 조(모둠)</strong>에 배치되지 않습니다.</p>
+                            <div class="flex gap-2 mb-3">
+                                <select id="sel-avoid-1" class="flex-1 px-2 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none">
+                                    <option value="">학생1</option>
+                                </select>
+                                <select id="sel-avoid-2" class="flex-1 px-2 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none">
+                                    <option value="">학생2</option>
+                                </select>
+                                <button id="btn-add-avoid" class="bg-slate-800 text-white px-3 py-2 rounded-lg text-sm hover:bg-slate-700 transition shrink-0">추가</button>
+                            </div>
+                            <ul id="avoid-list" class="space-y-2 text-sm flex-1 overflow-y-auto pr-1"></ul>
+                        </div>
+                    </div>
+                    
+                    <!-- Right: Zone Config & Visualization -->
+                    <div class="w-full lg:w-2/3 bg-white p-5 rounded-xl shadow-sm border border-slate-200 flex flex-col min-h-0">
+                        <div class="flex justify-between items-center mb-4">
+                            <h2 class="text-md font-semibold">영역 설정 및 시각화</h2>
+                            <div class="flex gap-2">
+                                <button id="btn-auto-zone" class="px-3 py-1.5 text-xs bg-emerald-100 text-emerald-700 rounded-lg hover:bg-emerald-200 transition font-medium">영역 자동 설정 (1/3)</button>
+                                <button id="btn-clear-zone" class="px-3 py-1.5 text-xs bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition font-medium">초기화</button>
+                            </div>
+                        </div>
+                        
+                        <div class="flex flex-wrap gap-4 mb-4 text-sm bg-slate-50 p-2 rounded-lg border border-slate-100">
+                            <label class="flex items-center gap-1 cursor-pointer">
+                                <input type="radio" name="zone-mode" value="front" class="text-emerald-600 focus:ring-emerald-500"> 
+                                <span class="w-3 h-3 rounded-full bg-orange-200 border border-orange-300 inline-block"></span> 앞자리 지정
+                            </label>
+                            <label class="flex items-center gap-1 cursor-pointer">
+                                <input type="radio" name="zone-mode" value="back" class="text-emerald-600 focus:ring-emerald-500"> 
+                                <span class="w-3 h-3 rounded-full bg-sky-200 border border-sky-300 inline-block"></span> 뒷자리 지정
+                            </label>
+                            <label class="flex items-center gap-1 cursor-pointer">
+                                <input type="radio" name="zone-mode" value="normal" class="text-emerald-600 focus:ring-emerald-500" checked> 
+                                <span class="w-3 h-3 rounded-full bg-slate-100 border border-slate-300 inline-block"></span> 일반/지우기
+                            </label>
+                            <span class="text-slate-400 text-xs ml-auto self-center hidden sm:inline">그리드의 칸을 클릭하여 영역을 설정하세요.</span>
+                        </div>
+                        
+                        <div class="flex-1 overflow-auto flex items-center justify-center bg-white rounded-lg border border-slate-200 p-4">
+                            <div id="adv-grid-container" class="grid gap-1">
+                                <!-- Setup grid generated by JS -->
+                            </div>
+                        </div>
+                        
+                        <div class="mt-4 flex flex-wrap gap-4 text-xs text-slate-600 justify-center shrink-0">
+                            <div class="flex items-center"><div class="w-4 h-4 rounded bg-orange-100 border border-orange-300 mr-1"></div> 앞자리 영역</div>
+                            <div class="flex items-center"><div class="w-4 h-4 rounded bg-sky-100 border border-sky-300 mr-1"></div> 뒷자리 영역</div>
+                            <div class="flex items-center"><div class="w-4 h-4 rounded bg-pink-100 border border-pink-300 mr-1"></div> 고정석</div>
+                            <div class="flex items-center"><div class="w-4 h-4 rounded bg-slate-100 border border-slate-300 mr-1"></div> 일반</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Result Tab -->
+            <div id="view-result" class="view-panel h-full flex flex-col hidden scale-in">
+                <!-- Toolbar -->
+                <div class="bg-white p-3 rounded-xl shadow-sm border border-slate-200 mb-4 flex flex-wrap justify-between items-center gap-3 shrink-0">
+                    <div class="flex items-center gap-4">
+                        <label class="flex items-center cursor-pointer select-none group">
+                            <div class="relative">
+                                <input type="checkbox" id="toggle-mask" class="sr-only">
+                                <div class="block bg-slate-200 w-10 h-6 rounded-full transition-colors group-hover:bg-slate-300" id="mask-bg"></div>
+                                <div class="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform" id="mask-dot"></div>
+                            </div>
+                            <span class="ml-2 text-sm font-medium text-slate-700">마스크 모드</span>
+                        </label>
+                        
+                        <button id="btn-rotate" class="flex items-center px-3 py-1.5 text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition">
+                            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                            교탁 포함 180도 회전
+                        </button>
+                    </div>
+
+                    <div class="flex items-center gap-4 hidden sm:flex">
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs text-slate-500">셀 크기</span>
+                            <input type="range" id="slider-cell-size" min="40" max="150" value="80" class="w-24 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-600">
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs text-slate-500">폰트 크기</span>
+                            <input type="range" id="slider-font-size" min="10" max="32" value="16" class="w-24 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-600">
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                        <button id="btn-export-csv" class="flex items-center px-3 py-1.5 text-sm bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100 transition font-medium">
+                            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                            엑셀 다운로드
+                        </button>
+                        <button id="btn-reassign" class="flex items-center px-4 py-1.5 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition shadow-sm font-medium">
+                            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                            다시 배치
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Board Wrapper (Rotatable) -->
+                <div id="board-wrapper" class="flex-1 flex flex-col items-center justify-center transition-transform duration-500 w-full min-h-0 bg-white rounded-xl shadow-sm border border-slate-200 p-4 relative overflow-hidden">
+                    
+                    <!-- Teacher Desk Indicator -->
+                    <div id="teacher-desk-container" class="w-full max-w-md mx-auto h-8 bg-slate-300 rounded-t-xl flex items-center justify-center text-sm font-bold text-slate-600 mb-4 shadow-sm shrink-0">
+                        <span id="teacher-desk-text" class="transition-transform duration-500">교 탁</span>
+                    </div>
+
+                    <!-- Grid Area -->
+                    <div class="flex-1 w-full overflow-auto flex items-center justify-center" id="result-board">
+                        <div id="result-grid-container" class="grid gap-2 transition-all duration-300">
+                            <!-- Result grid generated by JS -->
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-2 text-center text-xs text-slate-500 shrink-0">
+                    두 학생의 자리를 클릭하여 서로 교환할 수 있습니다. (고정석 제외) | 셀을 클릭하여 마스크를 해제할 수 있습니다.
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Modals -->
+    <!-- Countdown Modal -->
+    <div id="modal-countdown" class="fixed inset-0 bg-slate-900/90 z-50 flex flex-col items-center justify-center hidden backdrop-blur-sm">
+        <div id="countdown-number" class="text-white text-9xl font-black tabular-nums tracking-tighter">3</div>
+        <div class="text-emerald-300 text-xl mt-8 animate-pulse">최적의 모둠을 구성중입니다...</div>
+    </div>
+
+    <!-- Error/Alert Modal -->
+    <div id="modal-alert" class="fixed inset-0 bg-slate-900/50 z-50 flex items-center justify-center hidden opacity-0 transition-opacity duration-300">
+        <div class="bg-white rounded-2xl p-6 max-w-sm w-full mx-4 shadow-2xl transform scale-95 transition-transform duration-300" id="modal-alert-content">
+            <div class="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mb-4 mx-auto text-red-500" id="alert-icon-container">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+            </div>
+            <h3 class="text-lg font-bold text-center text-slate-800 mb-2" id="alert-title">알림</h3>
+            <p class="text-center text-slate-600 mb-6 text-sm" id="alert-message">메시지 내용</p>
+            <button id="btn-close-alert" class="w-full bg-slate-800 text-white rounded-xl py-2.5 font-medium hover:bg-slate-700 transition">확인</button>
+        </div>
+    </div>
+
+    <!-- Application Script -->
+    <script>
+        /**
+         * State Management
+         */
+        const state = {
+            rows: 5,
+            cols: 5,
+            groupSize: 4, // newly added
+            students: [], // Array of string (names)
+            preferences: {}, // name -> 'front' | 'back' | 'normal'
+            fixedSeats: [], // { name, row, col } (1-indexed)
+            avoidPairs: [], // [name1, name2]
+            zones: {}, // key 'r-c' -> 'front' | 'back'
+            result: null, // 2D array of names/null
+            
+            // UI State
+            advTabVisible: false,
+            currentTab: 'basic',
+            maskMode: false,
+            rotated: false,
+            selectedForSwap: null,
+            cellSize: 80,
+            fontSize: 16
+        };
+
+        /**
+         * DOM Elements
+         */
+        const els = {
+            // Tabs
+            tabBasic: document.getElementById('tab-basic'),
+            tabAdv: document.getElementById('tab-adv'),
+            tabResult: document.getElementById('tab-result'),
+            viewBasic: document.getElementById('view-basic'),
+            viewAdv: document.getElementById('view-adv'),
+            viewResult: document.getElementById('view-result'),
+
+            // Basic
+            inRows: document.getElementById('input-rows'),
+            inCols: document.getElementById('input-cols'),
+            inGroupSize: document.getElementById('input-group-size'),
+            totalSeats: document.getElementById('total-seats-display'),
+            inStudent: document.getElementById('input-student-name'),
+            btnAddStudent: document.getElementById('btn-add-student'),
+            btnClearStudents: document.getElementById('btn-clear-students'),
+            studentList: document.getElementById('student-list'),
+            studentCount: document.getElementById('student-count'),
+            emptyStudentMsg: document.getElementById('empty-student-msg'),
+            prefTableBody: document.getElementById('preference-table-body'),
+            btnSaveJson: document.getElementById('btn-save-json'),
+            inLoadJson: document.getElementById('input-load-json'),
+            btnRun: document.getElementById('btn-run-allocation'),
+
+            // Advanced
+            selFixedStudent: document.getElementById('sel-fixed-student'),
+            inFixedRow: document.getElementById('input-fixed-row'),
+            inFixedCol: document.getElementById('input-fixed-col'),
+            btnAddFixed: document.getElementById('btn-add-fixed'),
+            fixedList: document.getElementById('fixed-list'),
+            
+            selAvoid1: document.getElementById('sel-avoid-1'),
+            selAvoid2: document.getElementById('sel-avoid-2'),
+            btnAddAvoid: document.getElementById('btn-add-avoid'),
+            avoidList: document.getElementById('avoid-list'),
+
+            btnAutoZone: document.getElementById('btn-auto-zone'),
+            btnClearZone: document.getElementById('btn-clear-zone'),
+            advGrid: document.getElementById('adv-grid-container'),
+            zoneRadios: document.getElementsByName('zone-mode'),
+
+            // Result
+            toggleMask: document.getElementById('toggle-mask'),
+            maskBg: document.getElementById('mask-bg'),
+            maskDot: document.getElementById('mask-dot'),
+            btnRotate: document.getElementById('btn-rotate'),
+            slideCell: document.getElementById('slider-cell-size'),
+            slideFont: document.getElementById('slider-font-size'),
+            btnExport: document.getElementById('btn-export-csv'),
+            btnReassign: document.getElementById('btn-reassign'),
+            boardWrapper: document.getElementById('board-wrapper'),
+            deskText: document.getElementById('teacher-desk-text'),
+            resultGrid: document.getElementById('result-grid-container'),
+
+            // Modals
+            modalCountdown: document.getElementById('modal-countdown'),
+            countdownNumber: document.getElementById('countdown-number'),
+            modalAlert: document.getElementById('modal-alert'),
+            modalAlertContent: document.getElementById('modal-alert-content'),
+            alertTitle: document.getElementById('alert-title'),
+            alertMessage: document.getElementById('alert-message'),
+            btnCloseAlert: document.getElementById('btn-close-alert'),
+            alertIconContainer: document.getElementById('alert-icon-container')
+        };
+
+        /**
+         * Initialization & Event Listeners
+         */
+        function init() {
+            // Tab switching
+            els.tabBasic.addEventListener('click', () => switchTab('basic'));
+            els.tabAdv.addEventListener('click', () => switchTab('adv'));
+            els.tabResult.addEventListener('click', () => {
+                if(state.result) switchTab('result');
+            });
+
+            // Ctrl+F8 for Adv Tab
+            document.addEventListener('keydown', (e) => {
+                if (e.ctrlKey && e.key === 'F8') {
+                    e.preventDefault();
+                    state.advTabVisible = !state.advTabVisible;
+                    els.tabAdv.classList.toggle('hidden', !state.advTabVisible);
+                    if(!state.advTabVisible && state.currentTab === 'adv') {
+                        switchTab('basic');
+                    }
+                    showAlert('알림', state.advTabVisible ? '고급 설정 탭이 활성화되었습니다.' : '고급 설정 탭이 숨겨졌습니다.', 'info');
+                }
+            });
+
+            // Grid Size & Group size
+            const updateGridSize = () => {
+                state.rows = parseInt(els.inRows.value) || 1;
+                state.cols = parseInt(els.inCols.value) || 1;
+                state.groupSize = parseInt(els.inGroupSize.value) || 4;
+                els.totalSeats.textContent = state.rows * state.cols;
+                renderAdvGrid();
+                validateData();
+            };
+            els.inRows.addEventListener('change', updateGridSize);
+            els.inCols.addEventListener('change', updateGridSize);
+            els.inGroupSize.addEventListener('change', updateGridSize);
+
+            // Students
+            els.btnAddStudent.addEventListener('click', addStudents);
+            els.inStudent.addEventListener('keypress', e => { if(e.key === 'Enter') addStudents(); });
+            els.btnClearStudents.addEventListener('click', clearStudents);
+
+            // Advanced Tab actions
+            els.btnAddFixed.addEventListener('click', addFixedSeat);
+            els.btnAddAvoid.addEventListener('click', addAvoidPair);
+            els.btnAutoZone.addEventListener('click', autoSetZones);
+            els.btnClearZone.addEventListener('click', () => { state.zones = {}; renderAdvGrid(); });
+
+            // Run
+            els.btnRun.addEventListener('click', runAllocationFlow);
+            els.btnReassign.addEventListener('click', () => { switchTab('basic'); setTimeout(runAllocationFlow, 50); });
+
+            // File I/O
+            els.btnSaveJson.addEventListener('click', saveStateAsJson);
+            els.inLoadJson.addEventListener('change', loadStateFromJson);
+
+            // Result interactions
+            els.toggleMask.addEventListener('change', toggleMaskMode);
+            els.btnRotate.addEventListener('click', toggleRotation);
+            els.slideCell.addEventListener('input', updateResultStyles);
+            els.slideFont.addEventListener('input', updateResultStyles);
+            els.btnExport.addEventListener('click', exportToCSV);
+
+            // Modals
+            els.btnCloseAlert.addEventListener('click', hideAlert);
+
+            // Initial render
+            updateGridSize();
+            updateStudentList();
+            updateSelects();
+        }
+
+        /**
+         * UI Updates
+         */
+        function switchTab(tab) {
+            state.currentTab = tab;
+            
+            // Tab Buttons
+            [els.tabBasic, els.tabAdv, els.tabResult].forEach(el => {
+                el.className = 'px-4 py-2 rounded-md font-medium transition-colors ' + 
+                    (el.disabled ? 'text-slate-400 cursor-not-allowed opacity-50' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100');
+            });
+            if(tab === 'basic') els.tabBasic.className = 'px-4 py-2 rounded-md font-medium text-emerald-700 bg-emerald-50 transition-colors';
+            if(tab === 'adv') els.tabAdv.className = 'px-4 py-2 rounded-md font-medium text-emerald-700 bg-emerald-50 transition-colors';
+            if(tab === 'result') els.tabResult.className = 'px-4 py-2 rounded-md font-medium text-emerald-700 bg-emerald-50 transition-colors';
+
+            // Views
+            els.viewBasic.classList.add('hidden');
+            els.viewAdv.classList.add('hidden');
+            els.viewResult.classList.add('hidden');
+
+            if(tab === 'basic') els.viewBasic.classList.remove('hidden');
+            if(tab === 'adv') { els.viewAdv.classList.remove('hidden'); renderAdvGrid(); }
+            if(tab === 'result') { els.viewResult.classList.remove('hidden'); renderResultGrid(); }
+        }
+
+        function showAlert(title, message, type = 'error') {
+            els.alertTitle.textContent = title;
+            els.alertMessage.textContent = message;
+            
+            els.alertIconContainer.className = 'w-12 h-12 rounded-full flex items-center justify-center mb-4 mx-auto';
+            if(type === 'error') {
+                els.alertIconContainer.classList.add('bg-red-100', 'text-red-500');
+                els.alertIconContainer.innerHTML = '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>';
+            } else if(type === 'info') {
+                els.alertIconContainer.classList.add('bg-blue-100', 'text-blue-500');
+                els.alertIconContainer.innerHTML = '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>';
+            }
+
+            els.modalAlert.classList.remove('hidden');
+            // Trigger reflow
+            void els.modalAlert.offsetWidth;
+            els.modalAlert.classList.remove('opacity-0');
+            els.modalAlertContent.classList.remove('scale-95');
+        }
+
+        function hideAlert() {
+            els.modalAlert.classList.add('opacity-0');
+            els.modalAlertContent.classList.add('scale-95');
+            setTimeout(() => {
+                els.modalAlert.classList.add('hidden');
+            }, 300);
+        }
+
+        /**
+         * Student Management
+         */
+        function addStudents() {
+            const raw = els.inStudent.value.trim();
+            if (!raw) return;
+            
+            // split by comma, space, newline
+            const names = raw.split(/[\s,]+/).filter(n => n.trim() !== '');
+            let added = 0;
+            names.forEach(name => {
+                if(!state.students.includes(name)) {
+                    state.students.push(name);
+                    state.preferences[name] = 'normal';
+                    added++;
+                }
+            });
+            
+            els.inStudent.value = '';
+            if(added > 0) {
+                updateStudentList();
+                updateSelects();
+                validateData();
+            }
+        }
+
+        function removeStudent(name) {
+            state.students = state.students.filter(n => n !== name);
+            delete state.preferences[name];
+            
+            // Remove from fixed & avoid
+            state.fixedSeats = state.fixedSeats.filter(f => f.name !== name);
+            state.avoidPairs = state.avoidPairs.filter(p => p[0] !== name && p[1] !== name);
+            
+            updateStudentList();
+            updateSelects();
+            renderFixedList();
+            renderAvoidList();
+            validateData();
+        }
+
+        function clearStudents() {
+            if(confirm('모든 학생 명단과 설정을 삭제하시겠습니까?')) {
+                state.students = [];
+                state.preferences = {};
+                state.fixedSeats = [];
+                state.avoidPairs = [];
+                state.result = null;
+                updateStudentList();
+                updateSelects();
+                renderFixedList();
+                renderAvoidList();
+                els.tabResult.disabled = true;
+                validateData();
+            }
+        }
+
+        function updateStudentList() {
+            els.studentCount.textContent = state.students.length;
+            els.emptyStudentMsg.classList.toggle('hidden', state.students.length > 0);
+            
+            els.studentList.innerHTML = state.students.length === 0 ? els.emptyStudentMsg.outerHTML : '';
+            els.prefTableBody.innerHTML = '';
+
+            state.students.forEach(name => {
+                // List item
+                const div = document.createElement('div');
+                div.className = 'flex justify-between items-center bg-white px-3 py-2 rounded border border-slate-100 shadow-sm mb-1';
+                div.innerHTML = `
+                    <span class="font-medium text-slate-700 text-sm">${name}</span>
+                    <button class="text-slate-400 hover:text-red-500 transition px-1" onclick="removeStudent('${name}')">✕</button>
+                `;
+                els.studentList.appendChild(div);
+
+                // Preference row
+                const tr = document.createElement('tr');
+                tr.className = 'bg-white';
+                tr.innerHTML = `
+                    <td class="px-4 py-2 font-medium text-slate-700">${name}</td>
+                    <td class="px-4 py-2">
+                        <select onchange="updatePreference('${name}', this.value)" class="bg-slate-50 border border-slate-300 text-slate-700 text-sm rounded-lg focus:ring-emerald-500 focus:border-emerald-500 block w-full p-1.5 outline-none">
+                            <option value="normal" ${state.preferences[name] === 'normal' ? 'selected' : ''}>일반</option>
+                            <option value="front" ${state.preferences[name] === 'front' ? 'selected' : ''}>앞자리</option>
+                            <option value="back" ${state.preferences[name] === 'back' ? 'selected' : ''}>뒷자리</option>
+                        </select>
+                    </td>
+                    <td class="px-4 py-2 text-center">
+                        <button class="text-slate-400 hover:text-red-500 transition px-1" onclick="removeStudent('${name}')">✕</button>
+                    </td>
+                `;
+                els.prefTableBody.appendChild(tr);
+            });
+        }
+
+        window.updatePreference = function(name, val) {
+            state.preferences[name] = val;
+        };
+
+        window.removeStudent = removeStudent;
+
+        function updateSelects() {
+            const options = '<option value="">학생 선택</option>' + 
+                state.students.map(n => `<option value="${n}">${n}</option>`).join('');
+            els.selFixedStudent.innerHTML = options;
+            els.selAvoid1.innerHTML = options;
+            els.selAvoid2.innerHTML = options;
+        }
+
+        /**
+         * Advanced Settings Logic
+         */
+        function addFixedSeat() {
+            const name = els.selFixedStudent.value;
+            const r = parseInt(els.inFixedRow.value);
+            const c = parseInt(els.inFixedCol.value);
+
+            if(!name || isNaN(r) || isNaN(c)) return showAlert('오류', '학생과 좌석(행, 열)을 모두 입력하세요.');
+            if(r < 1 || r > state.rows || c < 1 || c > state.cols) return showAlert('오류', '유효하지 않은 좌석 위치입니다.');
+            
+            // check conflicts
+            if(state.fixedSeats.some(f => f.name === name)) {
+                return showAlert('오류', '이미 고정석이 지정된 학생입니다.');
+            }
+            if(state.fixedSeats.some(f => f.row === r && f.col === c)) {
+                return showAlert('오류', '해당 자리에 이미 다른 고정석이 있습니다.');
+            }
+
+            state.fixedSeats.push({name, row: r, col: c});
+            els.selFixedStudent.value = '';
+            els.inFixedRow.value = '';
+            els.inFixedCol.value = '';
+            renderFixedList();
+            renderAdvGrid();
+        }
+
+        function removeFixedSeat(name) {
+            state.fixedSeats = state.fixedSeats.filter(f => f.name !== name);
+            renderFixedList();
+            renderAdvGrid();
+        }
+        window.removeFixedSeat = removeFixedSeat;
+
+        function renderFixedList() {
+            els.fixedList.innerHTML = state.fixedSeats.map(f => `
+                <li class="flex justify-between bg-slate-50 px-3 py-2 rounded border border-slate-200">
+                    <span><span class="font-bold text-emerald-600">${f.name}</span> (${f.row}행 ${f.col}열)</span>
+                    <button class="text-slate-400 hover:text-red-500" onclick="removeFixedSeat('${f.name}')">✕</button>
+                </li>
+            `).join('');
+        }
+
+        function addAvoidPair() {
+            const n1 = els.selAvoid1.value;
+            const n2 = els.selAvoid2.value;
+
+            if(!n1 || !n2) return showAlert('오류', '두 학생을 모두 선택하세요.');
+            if(n1 === n2) return showAlert('오류', '서로 다른 학생을 선택하세요.');
+            
+            // Check exists
+            if(state.avoidPairs.some(p => (p[0]===n1 && p[1]===n2) || (p[0]===n2 && p[1]===n1))) {
+                return showAlert('오류', '이미 등록된 짝입니다.');
+            }
+
+            state.avoidPairs.push([n1, n2]);
+            els.selAvoid1.value = '';
+            els.selAvoid2.value = '';
+            renderAvoidList();
+        }
+
+        function removeAvoidPair(idx) {
+            state.avoidPairs.splice(idx, 1);
+            renderAvoidList();
+        }
+        window.removeAvoidPair = removeAvoidPair;
+
+        function renderAvoidList() {
+            els.avoidList.innerHTML = state.avoidPairs.map((p, idx) => `
+                <li class="flex justify-between bg-slate-50 px-3 py-2 rounded border border-slate-200">
+                    <span><span class="font-bold text-red-500">${p[0]}</span> ↔ <span class="font-bold text-red-500">${p[1]}</span></span>
+                    <button class="text-slate-400 hover:text-red-500" onclick="removeAvoidPair(${idx})">✕</button>
+                </li>
+            `).join('');
+        }
+
+        function getZoneMode() {
+            for(let r of els.zoneRadios) if(r.checked) return r.value;
+            return 'normal';
+        }
+
+        function toggleZone(r, c) {
+            const mode = getZoneMode();
+            const key = `${r}-${c}`;
+            
+            if(mode === 'normal') {
+                delete state.zones[key];
+            } else {
+                state.zones[key] = mode;
+            }
+            renderAdvGrid();
+        }
+        window.toggleZone = toggleZone;
+
+        function autoSetZones() {
+            state.zones = {};
+            const rCount = state.rows;
+            if(rCount < 3) return showAlert('알림', '행이 3개 이상이어야 자동 영역 설정이 가능합니다.', 'info');
+            
+            const frontRows = Math.floor(rCount / 3) || 1;
+            const backRowStart = rCount - frontRows + 1;
+
+            for(let r=1; r<=rCount; r++) {
+                for(let c=1; c<=state.cols; c++) {
+                    const key = `${r}-${c}`;
+                    if(r <= frontRows) state.zones[key] = 'front';
+                    else if(r >= backRowStart) state.zones[key] = 'back';
+                }
+            }
+            renderAdvGrid();
+            showAlert('완료', '앞쪽/뒤쪽 1/3 영역이 자동으로 지정되었습니다.', 'info');
+        }
+
+        function renderAdvGrid() {
+            if(state.currentTab !== 'adv') return;
+            
+            els.advGrid.style.gridTemplateColumns = `repeat(${state.cols}, minmax(0, 1fr))`;
+            els.advGrid.innerHTML = '';
+            
+            for(let r=1; r<=state.rows; r++) {
+                for(let c=1; c<=state.cols; c++) {
+                    const key = `${r}-${c}`;
+                    const fixed = state.fixedSeats.find(f => f.row === r && f.col === c);
+                    const zone = state.zones[key];
+                    
+                    const cell = document.createElement('div');
+                    cell.className = 'w-10 h-10 sm:w-12 sm:h-12 border-2 rounded flex items-center justify-center text-xs font-bold cursor-pointer transition transform hover:scale-105';
+                    
+                    if(fixed) {
+                        cell.classList.add('bg-pink-100', 'border-pink-400', 'text-pink-700');
+                        cell.textContent = fixed.name.substring(0, 2);
+                    } else if(zone === 'front') {
+                        cell.classList.add('bg-orange-100', 'border-orange-300', 'text-orange-700');
+                    } else if(zone === 'back') {
+                        cell.classList.add('bg-sky-100', 'border-sky-300', 'text-sky-700');
+                    } else {
+                        cell.classList.add('bg-white', 'border-slate-200', 'text-slate-400');
+                    }
+                    
+                    cell.onclick = () => toggleZone(r, c);
+                    els.advGrid.appendChild(cell);
+                }
+            }
+        }
+
+        function validateData() {
+            const seats = state.rows * state.cols;
+            const students = state.students.length;
+            
+            if(students > seats) {
+                els.btnRun.disabled = true;
+                els.totalSeats.classList.remove('text-emerald-600');
+                els.totalSeats.classList.add('text-red-500');
+            } else {
+                els.btnRun.disabled = false;
+                els.totalSeats.classList.remove('text-red-500');
+                els.totalSeats.classList.add('text-emerald-600');
+            }
+        }
+
+        /**
+         * State JSON I/O
+         */
+        function saveStateAsJson() {
+            const data = JSON.stringify(state, null, 2);
+            const blob = new Blob([data], {type: 'application/json'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `group_settings_${new Date().getTime()}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function loadStateFromJson(e) {
+            const file = e.target.files[0];
+            if(!file) return;
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                try {
+                    const loaded = JSON.parse(evt.target.result);
+                    // Minimal validation
+                    if(loaded.rows) state.rows = loaded.rows;
+                    if(loaded.cols) state.cols = loaded.cols;
+                    if(loaded.groupSize) state.groupSize = loaded.groupSize;
+                    if(loaded.students) state.students = loaded.students;
+                    if(loaded.preferences) state.preferences = loaded.preferences;
+                    if(loaded.fixedSeats) state.fixedSeats = loaded.fixedSeats;
+                    if(loaded.avoidPairs) state.avoidPairs = loaded.avoidPairs;
+                    if(loaded.zones) state.zones = loaded.zones;
+                    
+                    els.inRows.value = state.rows;
+                    els.inCols.value = state.cols;
+                    els.inGroupSize.value = state.groupSize;
+                    els.totalSeats.textContent = state.rows * state.cols;
+                    
+                    updateStudentList();
+                    updateSelects();
+                    renderFixedList();
+                    renderAvoidList();
+                    validateData();
+                    
+                    showAlert('성공', '설정을 성공적으로 불러왔습니다.', 'info');
+                } catch(err) {
+                    showAlert('오류', '유효하지 않은 설정 파일입니다.');
+                }
+            };
+            reader.readAsText(file);
+            e.target.value = '';
+        }
+
+        /**
+         * Audio Synthesis
+         */
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playBeep(freq, type, dur) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            
+            gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + dur);
+            
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            
+            osc.start();
+            osc.stop(audioCtx.currentTime + dur);
+        }
+
+        /**
+         * Flow & Algorithm
+         */
+        async function runAllocationFlow() {
+            if(state.students.length === 0) return showAlert('오류', '학생 명단이 비어있습니다.');
+            if(state.students.length > state.rows * state.cols) return showAlert('오류', '학생 수가 교실 자리 수보다 많습니다.');
+            
+            // Start Countdown
+            els.modalCountdown.classList.remove('hidden');
+            const nums = ['3', '2', '1'];
+            
+            for(let i=0; i<3; i++) {
+                els.countdownNumber.textContent = nums[i];
+                els.countdownNumber.classList.remove('countdown-anim');
+                void els.countdownNumber.offsetWidth; // trigger reflow
+                els.countdownNumber.classList.add('countdown-anim');
+                playBeep(440, 'sine', 0.2); // Beep
+                await new Promise(r => setTimeout(r, 1000));
+            }
+            
+            // calculation sound
+            playBeep(880, 'triangle', 0.8); // Baaam
+
+            els.modalCountdown.classList.add('hidden');
+            
+            // Run Algo
+            const success = allocateSeats();
+            if(success) {
+                els.tabResult.disabled = false;
+                switchTab('result');
+            } else {
+                showAlert('실패', '현재 제약 조건(고정석, 피해야 할 짝 등)으로는 배치가 불가능합니다. 조건을 완화해주세요.');
+            }
+        }
+
+        function calculateGroupId(r, c, cols, groupSize) {
+            const blockCols = 2; // 보통 모둠은 2열(가로 2명)로 묶음
+            const blockRows = Math.max(1, Math.ceil(groupSize / blockCols));
+            const groupR = Math.floor(r / blockRows);
+            const groupC = Math.floor(c / blockCols);
+            const blocksPerRow = Math.ceil(cols / blockCols);
+            return groupR * blocksPerRow + groupC + 1;
+        }
+
+        // Shuffle array
+        function shuffle(array) {
+            let currentIndex = array.length, randomIndex;
+            while (currentIndex != 0) {
+                randomIndex = Math.floor(Math.random() * currentIndex);
+                currentIndex--;
+                [array[currentIndex], array[randomIndex]] = [array[randomIndex], array[currentIndex]];
+            }
+            return array;
+        }
+
+        function allocateSeats() {
+            const {rows, cols, groupSize, students, fixedSeats, avoidPairs, preferences, zones} = state;
+            const grid = Array(rows).fill(null).map(() => Array(cols).fill(null));
+            
+            // 1. Place fixed seats
+            for(let f of fixedSeats) {
+                if(f.row <= rows && f.col <= cols) {
+                    grid[f.row-1][f.col-1] = f.name;
+                }
+            }
+
+            // 2. Prepare remaining students
+            const fixedNames = fixedSeats.map(f => f.name);
+            let remaining = students.filter(s => !fixedNames.includes(s));
+            remaining = shuffle(remaining); // Randomize for varied results
+
+            // Build empty spots
+            const spots = [];
+            for(let r=0; r<rows; r++) {
+                for(let c=0; c<cols; c++) {
+                    if(grid[r][c] === null) spots.push({r, c});
+                }
+            }
+            spots.sort(() => Math.random() - 0.5);
+
+            // Pre-calculate zone preferences for spots
+            spots.forEach(sp => {
+                sp.zone = zones[`${sp.r+1}-${sp.c+1}`] || 'normal';
+            });
+
+            const adjMap = {}; // avoids
+            students.forEach(s => adjMap[s] = new Set());
+            avoidPairs.forEach(p => {
+                if(adjMap[p[0]]) adjMap[p[0]].add(p[1]);
+                if(adjMap[p[1]]) adjMap[p[1]].add(p[0]);
+            });
+
+            // Backtracking function
+            let iterations = 0;
+            const maxIters = 50000; 
+
+            function solve(studentIndex) {
+                if(studentIndex === remaining.length) return true; // All assigned
+                if(iterations++ > maxIters) return false;
+
+                const st = remaining[studentIndex];
+                const pref = preferences[st];
+                const avoids = adjMap[st];
+
+                // Prioritize spots that match preference
+                const sortedSpots = [...spots].sort((a, b) => {
+                    const aMatch = a.zone === pref ? 1 : 0;
+                    const bMatch = b.zone === pref ? 1 : 0;
+                    return bMatch - aMatch;
+                });
+
+                for(let sp of sortedSpots) {
+                    if(grid[sp.r][sp.c] !== null) continue;
+
+                    // Zone check
+                    const hasFrontZone = Object.values(zones).includes('front');
+                    const hasBackZone = Object.values(zones).includes('back');
+                    if(pref === 'front' && hasFrontZone && sp.zone !== 'front') continue;
+                    if(pref === 'back' && hasBackZone && sp.zone !== 'back') continue;
+
+                    // Avoid group check (Same group)
+                    let conflict = false;
+                    const myGroupId = calculateGroupId(sp.r, sp.c, cols, groupSize);
+
+                    for(let r=0; r<rows; r++){
+                        for(let c=0; c<cols; c++){
+                            if(grid[r][c]) {
+                                const otherGroupId = calculateGroupId(r, c, cols, groupSize);
+                                if(myGroupId === otherGroupId && avoids.has(grid[r][c])) {
+                                    conflict = true; break;
+                                }
+                            }
+                        }
+                        if(conflict) break;
+                    }
+                    if(conflict) continue;
+
+                    // Place
+                    grid[sp.r][sp.c] = st;
+                    
+                    if(solve(studentIndex + 1)) return true;
+                    
+                    // Backtrack
+                    grid[sp.r][sp.c] = null;
+                }
+                return false;
+            }
+
+            if(solve(0)) {
+                state.result = grid;
+                return true;
+            }
+            return false;
+        }
+
+        /**
+         * Result Rendering & Interaction
+         */
+        function renderResultGrid() {
+            if(!state.result) return;
+            els.resultGrid.style.gridTemplateColumns = `repeat(${state.cols}, minmax(0, 1fr))`;
+            els.resultGrid.innerHTML = '';
+            state.selectedForSwap = null;
+
+            for(let r=0; r<state.rows; r++) {
+                for(let c=0; c<state.cols; c++) {
+                    const name = state.result[r][c];
+                    const isFixed = state.fixedSeats.some(f => f.row === r+1 && f.col === c+1);
+                    const zone = state.zones[`${r+1}-${c+1}`] || 'normal';
+                    
+                    // Group Id logic (Block clustering)
+                    const groupId = calculateGroupId(r, c, state.cols, state.groupSize);
+
+                    const card = document.createElement('div');
+                    card.className = `seat-card ${state.maskMode ? 'masked' : ''}`;
+                    card.dataset.r = r;
+                    card.dataset.c = c;
+                    
+                    if(name) {
+                        card.classList.add('cell-interactive');
+                        card.onclick = () => handleSeatClick(r, c, card);
+                    }
+
+                    // Inner wrapper
+                    const inner = document.createElement('div');
+                    inner.className = 'seat-card-inner';
+
+                    // Front
+                    const front = document.createElement('div');
+                    
+                    const groupColors = [
+                        'bg-red-50', 'bg-blue-50', 'bg-emerald-50', 'bg-amber-50',
+                        'bg-purple-50', 'bg-fuchsia-50', 'bg-indigo-50', 'bg-orange-50',
+                        'bg-teal-50', 'bg-cyan-50'
+                    ];
+                    const borderColors = [
+                        'border-red-300', 'border-blue-300', 'border-emerald-300', 'border-amber-300',
+                        'border-purple-300', 'border-fuchsia-300', 'border-indigo-300', 'border-orange-300',
+                        'border-teal-300', 'border-cyan-300'
+                    ];
+                    const textColors = [
+                        'text-red-700', 'text-blue-700', 'text-emerald-700', 'text-amber-800',
+                        'text-purple-700', 'text-fuchsia-700', 'text-indigo-700', 'text-orange-700',
+                        'text-teal-700', 'text-cyan-700'
+                    ];
+                    const gIdx = (groupId - 1) % groupColors.length;
+
+                    if(name) {
+                        front.className = `seat-front seat-content ${groupColors[gIdx]} ${borderColors[gIdx]}`;
+                        
+                        front.innerHTML = `
+                            <span class="absolute top-1 left-1 text-[10px] bg-white/70 ${textColors[gIdx]} px-1.5 py-0.5 rounded-sm shadow-sm font-bold">${groupId}조</span>
+                            <span class="font-bold text-slate-800 name-text truncate px-1 w-full text-center mt-2">${name}</span>
+                        `;
+                    } else {
+                        front.className = `seat-front seat-content zone-empty`;
+                        front.innerHTML = `
+                            <span class="absolute top-1 left-1 text-[10px] bg-slate-100 text-slate-400 px-1.5 py-0.5 rounded-sm opacity-60">${groupId}조</span>
+                            <span class="text-slate-300 text-sm mt-2">빈 자리</span>
+                        `;
+                    }
+
+                    // Back
+                    const back = document.createElement('div');
+                    back.className = 'seat-back';
+                    back.innerHTML = '<span>?</span>';
+
+                    inner.appendChild(front);
+                    inner.appendChild(back);
+                    card.appendChild(inner);
+                    els.resultGrid.appendChild(card);
+                }
+            }
+            updateResultStyles();
+        }
+
+        function getZoneBgClass(zone) {
+            if(zone === 'front') return 'zone-front';
+            if(zone === 'back') return 'zone-back';
+            return 'zone-normal';
+        }
+
+        function handleSeatClick(r, c, cardEl) {
+            if(state.maskMode && cardEl.classList.contains('masked')) {
+                cardEl.classList.remove('masked');
+                return;
+            }
+
+            const name = state.result[r][c];
+            
+            if(!state.selectedForSwap) {
+                state.selectedForSwap = {r, c, name, el: cardEl.querySelector('.seat-front')};
+                state.selectedForSwap.el.classList.add('selected-seat');
+            } else {
+                const s1 = state.selectedForSwap;
+                const s2 = {r, c, name};
+
+                if(s1.r === s2.r && s1.c === s2.c) {
+                    s1.el.classList.remove('selected-seat');
+                    state.selectedForSwap = null;
+                    return;
+                }
+
+                state.result[s1.r][s1.c] = s2.name;
+                state.result[s2.r][s2.c] = s1.name;
+                
+                state.selectedForSwap = null;
+                renderResultGrid(); // re-render updates group numbers and colors properly
+            }
+        }
+
+        function toggleMaskMode() {
+            state.maskMode = els.toggleMask.checked;
+            
+            if(state.maskMode) {
+                els.maskBg.classList.replace('bg-slate-200', 'bg-emerald-500');
+                els.maskDot.style.transform = 'translateX(100%)';
+            } else {
+                els.maskBg.classList.replace('bg-emerald-500', 'bg-slate-200');
+                els.maskDot.style.transform = 'translateX(0)';
+            }
+
+            const cards = els.resultGrid.querySelectorAll('.seat-card');
+            cards.forEach(c => {
+                if(state.maskMode) c.classList.add('masked');
+                else c.classList.remove('masked');
+            });
+        }
+
+        function toggleRotation() {
+            state.rotated = !state.rotated;
+            if(state.rotated) {
+                els.boardWrapper.classList.add('rotated-180');
+                els.deskText.classList.add('rotated-180');
+                els.btnRotate.classList.add('bg-emerald-100', 'text-emerald-700');
+            } else {
+                els.boardWrapper.classList.remove('rotated-180');
+                els.deskText.classList.remove('rotated-180');
+                els.btnRotate.classList.remove('bg-emerald-100', 'text-emerald-700');
+            }
+        }
+
+        function updateResultStyles() {
+            state.cellSize = parseInt(els.slideCell.value);
+            state.fontSize = parseInt(els.slideFont.value);
+            
+            const cards = els.resultGrid.querySelectorAll('.seat-card');
+            cards.forEach(c => {
+                c.style.width = state.cellSize + 'px';
+                c.style.height = state.cellSize + 'px';
+            });
+            
+            const texts = els.resultGrid.querySelectorAll('.name-text');
+            texts.forEach(t => {
+                t.style.fontSize = state.fontSize + 'px';
+            });
+        }
+
+        function exportToCSV() {
+            if(!state.result) return;
+            
+            let csvContent = "\uFEFF"; 
+            csvContent += "교실 모둠배치 결과\n\n";
+            csvContent += "교탁\n\n";
+
+            for(let r=0; r<state.rows; r++) {
+                const rowArr = [];
+                for(let c=0; c<state.cols; c++) {
+                    let val = state.result[r][c] || "(빈자리)";
+                    val = val.replace(/"/g, '""');
+                    const groupId = calculateGroupId(r, c, state.cols, state.groupSize);
+                    // Format: "Name [N조]"
+                    rowArr.push(`"${val} [${groupId}조]"`);
+                }
+                csvContent += rowArr.join(",") + "\n";
+            }
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `모둠배치결과_${new Date().toISOString().slice(0,10)}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // Boot
+        init();
+
+    </script>
+</body>
+</html>
